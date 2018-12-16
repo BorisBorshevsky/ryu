@@ -4,15 +4,17 @@ from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
+from ryu.lib.addrconv import ipv4
 from ryu.lib.mac import haddr_to_int
 from ryu.lib.packet.arp import ARP_HW_TYPE_ETHERNET, ARP_REPLY
 from ryu.lib.packet.ether_types import ETH_TYPE_IP
 from ryu.ofproto import ofproto_v1_3
-from ryu.lib.packet import packet
+from ryu.lib.packet import packet, tcp
 from ryu.lib.packet.packet import Packet
 from ryu.lib.packet import arp
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
+from ryu.ofproto.ofproto_v1_3 import OFPIT_APPLY_ACTIONS
 
 
 class LoadBalancer(app_manager.RyuApp):
@@ -57,9 +59,71 @@ class LoadBalancer(app_manager.RyuApp):
 
         # If the packet is an ARP packet, create new flow table
         # entries and send an ARP response.
+
+        print "received packet "
+
         if ether_frame.ethertype == ether_types.ETH_TYPE_ARP:
             self.add_flow(dp, pkt, ofp_parser, ofp, in_port)
             self.arp_response(dp, pkt, ether_frame, ofp_parser, ofp, in_port)
+            # return
+        #
+        # datapath = msg.datapath
+        #
+        # parser = datapath.ofproto_parser
+        #
+        # ip_header = pkt.get_protocols(ipv4.ipv4)[0]
+        # # print("IP_Header", ip_header)
+        # tcp_header = pkt.get_protocols(tcp.tcp)[0]
+        # # print("TCP_Header", tcp_header)
+        # eth = pkt.get_protocols(ethernet.ethernet)[0]
+        #
+        # # Route to server
+        # match = parser.OFPMatch(in_port=in_port, eth_type=eth.ethertype, eth_src=eth.src,
+        #                         eth_dst=eth.dst, ip_proto=ip_header.proto,
+        #                         ipv4_src=ip_header.src,
+        #                         ipv4_dst=ip_header.dst, tcp_src=tcp_header.src_port,
+        #                         tcp_dst=tcp_header.dst_port)
+        #
+        # if ip_header.src == "10.0.0.3" or ip_header.src == "10.0.0.5":
+        #     server_mac_selected = '00:00:00:00:00:01'
+        #     server_ip_selected = '10.0.0.1'
+        #     server_outport_selected = 1
+        # else:
+        #     server_mac_selected = '00:00:00:00:00:02'
+        #     server_ip_selected = '10.0.0.2'
+        #     server_outport_selected = 2
+        #
+        # actions = [parser.OFPActionSetField(ipv4_src=self.VIRTUAL_IP),
+        #            parser.OFPActionSetField(eth_src=self.VIRTUAL_MAC),
+        #            parser.OFPActionSetField(eth_dst=server_mac_selected),
+        #            parser.OFPActionSetField(ipv4_dst=server_ip_selected),
+        #            parser.OFPActionOutput(server_outport_selected)]
+        # inst = [parser.OFPInstructionActions(OFPIT_APPLY_ACTIONS, actions)]
+        # flow_mod = parser.OFPFlowMod(datapath=datapath, match=match, idle_timeout=7,
+        #                              instructions=inst, buffer_id=msg.buffer_id)
+        # datapath.send_msg(flow_mod)
+        # print("<========Packet sent from Client :" + str(ip_header.src) + " to Server: " + str(
+        #     server_ip_selected) + ", MAC: " + str(
+        #     server_mac_selected) + " and on switch port: " + str(
+        #     server_outport_selected) + "========>")
+        #
+        # # Reverse route from server
+        # match = parser.OFPMatch(in_port=server_outport_selected, eth_type=eth.ethertype,
+        #                         eth_src=server_mac_selected, eth_dst=self.VIRTUAL_MAC,
+        #                         ip_proto=ip_header.proto, ipv4_src=server_ip_selected,
+        #                         ipv4_dst=self.VIRTUAL_IP, tcp_src=tcp_header.dst_port,
+        #                         tcp_dst=tcp_header.src_port)
+        # actions = [parser.OFPActionSetField(eth_src=self.VIRTUAL_MAC),
+        #            parser.OFPActionSetField(ipv4_src=self.VIRTUAL_IP),
+        #            parser.OFPActionSetField(ipv4_dst=ip_header.src),
+        #            parser.OFPActionSetField(eth_dst=eth.src), parser.OFPActionOutput(in_port)]
+        # inst2 = [parser.OFPInstructionActions(OFPIT_APPLY_ACTIONS, actions)]
+        # flow_mod2 = parser.OFPFlowMod(datapath=datapath, match=match, idle_timeout=7,
+        #                               instructions=inst2)
+        # datapath.send_msg(flow_mod2)
+        # print("<++++++++Reply sent from server having IP: " + str(
+        #     server_ip_selected) + ", MAC: " + str(server_mac_selected) + " to client:" + str(
+        #     ip_header.src) + " via load balancer :" + str(self.VIRTUAL_IP) + "++++++++>")
 
     # Sends an ARP response to the contacting host with the
     # real MAC address of a server.
@@ -100,6 +164,11 @@ class LoadBalancer(app_manager.RyuApp):
             dst_ip=dst_ip
         )
 
+        print "arp_response -> src_mac : %s" % src_mac
+        print "arp_response -> src_ip : %s" % src_ip
+        print "arp_response -> dst_mac : %s" % dst_mac
+        print "arp_response -> dst_ip : %s" % dst_ip
+
         pkt = Packet(protocols=[eth_header, arp_reply_packet])
         pkt.serialize()
 
@@ -125,10 +194,10 @@ class LoadBalancer(app_manager.RyuApp):
         # Sets up the flow table in the switch to map IP addresses correctly.
 
     def add_flow(self, datapath, pkt, ofp_parser, ofp, in_port):
-        print "arp.arp: %s" % arp.arp
+        print "add_flow -> arp.arp: %s" % arp.arp
 
         src_ip = pkt.get_protocol(arp.arp).src_ip
-        print "src_ip: %s" % src_ip
+        print "add_flow -> src_ip: %s" % src_ip
 
         # Don't push forwarding rules if an ARP request is received from a server.
         if src_ip == self.H1_ip or src_ip == self.H2_ip:
@@ -141,10 +210,10 @@ class LoadBalancer(app_manager.RyuApp):
 
         eth = pkt.get_protocols(ethernet.ethernet)[0]
         src_mac_address = eth.src
-        print "src_mac_address: %s" % src_mac_address
+        print "add_flow -> src_mac_address: %s" % src_mac_address
 
         dest_ip_address = self.get_expected_dest_address(src_mac_address)
-        print "dest_ip_address: %s" % dest_ip_address
+        print "add_flow -> expected_dest_ip_address: %s" % dest_ip_address
 
         actions = [
             ofp_parser.OFPActionSetField(ipv4_dst=dest_ip_address),
