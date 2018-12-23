@@ -1,22 +1,3 @@
-#!/bin/bash
-# https://github.com/rishikeshadusumilli/TCP-based-Round-Robin-Load-Balancer/blob/master/loadBalancer13.py
-# Code adopted and implemented from Nippon Telegraph and Telephone Corporation.
-# Code adopted and implemented from simple_switch_13.py
-
-# Copyright Rishikesh Adusumilli
-
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import random
 from ryu.lib import dpid as dpid_lib
 from ryu.base import app_manager

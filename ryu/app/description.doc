@@ -1,0 +1,145 @@
+# HW3 - Advanced networks
+__by:__ `Boris Borshevsky`, __ID:__ `311898746`
+
+submitted: load_balance.py
+
+in the file we have 2 classes:
+- `LoadBalancer` - the main class
+- `Server` - to represent server details, it is only a container for data 
+
+every packet that we don't have a matched rule for will go to `_packet_in_handler` method and will be handled there:
+- if it is a packet that it's destination is not our virtual ip - we will ignore it
+- if it is an ARP request packet, we will return the virtual IP and Virtual mac of our loadbalancer
+- if it is a normal packet, we will create 2 rules:
+    1. a rule that will rewrite this packet to the right server (3 and 5 go to h1, 4 and 6 go to h2)
+    2. a rule that will rewrite the response packet from the server back to the requesting client
+
+
+
+### commands:
+```bash
+h1 mkdir h1server
+h1 cd h1server
+h1 echo "Server1" > index.html
+h1 python -m SimpleHTTPServer 80 &
+h2 mkdir h2server
+h2 cd h1server
+h2 echo "Server2" > index.html
+h2 python -m SimpleHTTPServer 80 &
+```
+
+
+```bash
+mininet> h3 wget -O - 10.0.0.100
+--2018-12-19 20:31:19--  http://10.0.0.100/
+Connecting to 10.0.0.100:80... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 8 [text/html]
+Saving to: ‘STDOUT’
+
+ 0% [                                       ] 0           --.-K/s              Server1
+100%[======================================>] 8           --.-K/s   in 0s
+
+2018-12-19 20:31:19 (1.29 MB/s) - written to stdout [8/8]
+
+mininet> h4 wget -O - 10.0.0.100
+--2018-12-19 20:31:23--  http://10.0.0.100/
+Connecting to 10.0.0.100:80... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 8 [text/html]
+Saving to: ‘STDOUT’
+
+ 0% [                                       ] 0           --.-K/s              Server2
+100%[======================================>] 8           --.-K/s   in 0s
+
+2018-12-19 20:31:23 (838 KB/s) - written to stdout [8/8]
+```
+
+## Logs
+```
+EVENT ofp_event->LoadBalance EventOFPPacketIn
+_____________________
+building ARP Response
+_____________________
+ARP request src_mac: 00:00:00:00:00:03
+ARP request src_ip: 10.0.0.3
+EVENT ofp_event->LoadBalance EventOFPPacketIn
+client --> server:  req1.src_ip       = 10.0.0.3
+client --> server:  req1.src_mac      = 00:00:00:00:00:03
+client --> server:  req1.dst_ip       = 10.0.0.100
+client --> server:  req1.dst_mac      = 1a:2b:3c:4d:5e:6f
+client --> server:  req1.in_port      = 3
+client --> server:  req1.tcp.src_port = 39142
+client --> server:  req1.tcp.dst_port = 80
+____________
+adding flow:
+____________
+client --> LB: 10.0.0.3 --> 10.0.0.100
+LB --> server - 10.0.0.100 --> 10.0.0.1
+server --> client:  req.src_ip        = 10.0.0.1
+server --> client:  req.src_mac       = 00:00:00:00:00:01
+server --> client:  req.dst_ip        = 10.0.0.100
+server --> client:  req.dst_mac       = 1A:2B:3C:4D:5E:6F
+server --> client:  req.in_port       = 1
+server --> client:  req.tcp.src_port  = 80
+server --> client:  req.tcp.dst_port  = 39142
+____________
+adding flow:
+____________
+server --> LB: 10.0.0.1 --> 10.0.0.100
+LB --> client: 10.0.0.100 --> 10.0.0.3
+EVENT ofp_event->LoadBalance EventOFPPacketIn
+_____________________
+building ARP Response
+_____________________
+ARP request src_mac: 00:00:00:00:00:01
+ARP request src_ip: 10.0.0.1
+EVENT ofp_event->LoadBalance EventOFPPacketIn
+_____________________
+building ARP Response
+_____________________
+ARP request src_mac: 00:00:00:00:00:04
+ARP request src_ip: 10.0.0.4
+EVENT ofp_event->LoadBalance EventOFPPacketIn
+client --> server:  req1.src_ip       = 10.0.0.4
+client --> server:  req1.src_mac      = 00:00:00:00:00:04
+client --> server:  req1.dst_ip       = 10.0.0.100
+client --> server:  req1.dst_mac      = 1a:2b:3c:4d:5e:6f
+client --> server:  req1.in_port      = 4
+client --> server:  req1.tcp.src_port = 57098
+client --> server:  req1.tcp.dst_port = 80
+____________
+adding flow:
+____________
+client --> LB: 10.0.0.4 --> 10.0.0.100
+LB --> server - 10.0.0.100 --> 10.0.0.2
+server --> client:  req.src_ip        = 10.0.0.2
+server --> client:  req.src_mac       = 00:00:00:00:00:02
+server --> client:  req.dst_ip        = 10.0.0.100
+server --> client:  req.dst_mac       = 1A:2B:3C:4D:5E:6F
+server --> client:  req.in_port       = 2
+server --> client:  req.tcp.src_port  = 80
+server --> client:  req.tcp.dst_port  = 57098
+____________
+adding flow:
+____________
+server --> LB: 10.0.0.2 --> 10.0.0.100
+LB --> client: 10.0.0.100 --> 10.0.0.4
+EVENT ofp_event->LoadBalance EventOFPPacketIn
+_____________________
+building ARP Response
+_____________________
+ARP request src_mac: 00:00:00:00:00:02
+ARP request src_ip: 10.0.0.2
+```
+
+# Flows
+```bash
+mininet@mininet-vm:~/ryu/ryu/app$ sudo ovs-ofctl --protocols=OpenFlow13 dump-flows s1
+OFPST_FLOW reply (OF1.3) (xid=0x2):
+ cookie=0x0, duration=202.798s, table=0, n_packets=12, n_bytes=908, tcp,in_port=4,dl_src=00:00:00:00:00:04,dl_dst=1a:2b:3c:4d:5e:6f,nw_src=10.0.0.4,nw_dst=10.0.0.100,tp_src=57098,tp_dst=80 actions=set_field:10.0.0.100->ip_src,set_field:00:00:00:00:00:02->eth_dst,set_field:10.0.0.2->ip_dst,output:2
+ cookie=0x0, duration=206.605s, table=0, n_packets=12, n_bytes=991, tcp,in_port=1,dl_src=00:00:00:00:00:01,dl_dst=1a:2b:3c:4d:5e:6f,nw_src=10.0.0.1,nw_dst=10.0.0.100,tp_src=80,tp_dst=39142 actions=set_field:1a:2b:3c:4d:5e:6f->eth_src,set_field:10.0.0.100->ip_src,set_field:00:00:00:00:00:03->eth_dst,set_field:10.0.0.3->ip_dst,output:3
+ cookie=0x0, duration=202.798s, table=0, n_packets=12, n_bytes=991, tcp,in_port=2,dl_src=00:00:00:00:00:02,dl_dst=1a:2b:3c:4d:5e:6f,nw_src=10.0.0.2,nw_dst=10.0.0.100,tp_src=80,tp_dst=57098 actions=set_field:1a:2b:3c:4d:5e:6f->eth_src,set_field:10.0.0.100->ip_src,set_field:00:00:00:00:00:04->eth_dst,set_field:10.0.0.4->ip_dst,output:4
+ cookie=0x0, duration=206.605s, table=0, n_packets=12, n_bytes=908, tcp,in_port=3,dl_src=00:00:00:00:00:03,dl_dst=1a:2b:3c:4d:5e:6f,nw_src=10.0.0.3,nw_dst=10.0.0.100,tp_src=39142,tp_dst=80 actions=set_field:10.0.0.100->ip_src,set_field:00:00:00:00:00:01->eth_dst,set_field:10.0.0.1->ip_dst,output:1
+```
+
